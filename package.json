@@ -16,7 +16,7 @@
     "test:lenient": "jest --testPathIgnorePatterns=dist --passWithNoTests",
     "lint": "eslint . --ext .ts",
     "format": "prettier --write \"src/**/*.ts\"",
-    "prepublishOnly": "npm run build"
+    "prepublishOnly": "pnpm run build"
   },
   "keywords": [
     "cli",

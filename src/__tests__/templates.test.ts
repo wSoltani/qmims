@@ -1,129 +1,108 @@
+import * as fs from 'fs-extra';
 import path from 'path';
-import fs from 'fs-extra';
-import { 
-  listTemplates, 
-  getTemplate, 
-  addTemplate, 
-  removeTemplate, 
-  getTemplateContent,
-  initializeTemplates
-} from '../utils/templates';
 import { config } from '../utils/config';
+import {
+  listTemplates,
+  getTemplate,
+  addTemplate,
+  removeTemplate,
+  getTemplateContent,
+  initializeTemplates,
+} from '../utils/templates';
 
-// Mock fs-extra
+// Mock dependencies
 jest.mock('fs-extra', () => ({
-  ensureDirSync: jest.fn(),
   readFile: jest.fn(),
   pathExists: jest.fn(),
+  ensureDirSync: jest.fn(),
 }));
 
-// Mock config
-jest.mock('../utils/config', () => {
-  const mockStore: Record<string, any> = {};
-  return {
-    config: {
-      get: jest.fn((key) => {
-        if (key === 'customTemplates') {
-          return mockStore.customTemplates || {};
-        }
-        return mockStore[key];
-      }),
-      set: jest.fn((key, value) => {
-        mockStore[key] = value;
-      }),
-      store: mockStore,
-    },
-  };
+jest.mock('path', () => ({
+  join: jest.fn((...args) => args.join('/')),
+}));
+
+jest.mock('os', () => ({
+  homedir: jest.fn().mockReturnValue('/home/user'),
+}));
+
+jest.mock('../utils/config', () => ({
+  config: {
+    get: jest.fn(),
+    set: jest.fn(),
+  },
+}));
+
+// Mock process.platform
+Object.defineProperty(process, 'platform', {
+  value: 'linux',
+  configurable: true,
 });
 
 describe('Templates Utilities', () => {
   beforeEach(() => {
     jest.clearAllMocks();
-    // Reset the mock store
-    (config.get as jest.Mock).mockImplementation((key) => {
-      if (key === 'customTemplates') {
-        return {};
-      }
-      return undefined;
-    });
+    // Reset customTemplates mock
+    (config.get as jest.Mock).mockReturnValue({});
   });
 
   describe('listTemplates', () => {
     test('should list built-in templates', () => {
       const templates = listTemplates();
-      
-      // Should have at least the 5 built-in templates
+
+      // Should have 5 built-in templates
       expect(templates.length).toBeGreaterThanOrEqual(5);
-      
-      // Check for specific built-in templates
-      const templateNames = templates.map(t => t.name);
-      expect(templateNames).toContain('basic');
-      expect(templateNames).toContain('detailed');
-      expect(templateNames).toContain('minimal');
-      expect(templateNames).toContain('library');
-      expect(templateNames).toContain('service');
-      
-      // All should be marked as built-in
-      templates.forEach(template => {
-        expect(template.isBuiltIn).toBe(true);
-      });
+      expect(templates.some((t) => t.name === 'basic' && t.isBuiltIn)).toBe(true);
+      expect(templates.some((t) => t.name === 'detailed' && t.isBuiltIn)).toBe(true);
+      expect(templates.some((t) => t.name === 'minimal' && t.isBuiltIn)).toBe(true);
+      expect(templates.some((t) => t.name === 'library' && t.isBuiltIn)).toBe(true);
+      expect(templates.some((t) => t.name === 'service' && t.isBuiltIn)).toBe(true);
     });
 
-    test('should include custom templates if available', () => {
-      // Mock custom templates in config
+    test('should include custom templates', () => {
       const mockCustomTemplates = {
-        'custom1': '/path/to/custom1.md',
-        'custom2': '/path/to/custom2.md',
+        custom1: '/path/to/custom1.md',
+        custom2: '/path/to/custom2.md',
       };
-      
-      (config.get as jest.Mock).mockImplementation((key) => {
-        if (key === 'customTemplates') {
-          return mockCustomTemplates;
-        }
-        return undefined;
-      });
-      
+      (config.get as jest.Mock).mockReturnValue(mockCustomTemplates);
+
       const templates = listTemplates();
-      
-      // Should include the custom templates
-      const customTemplates = templates.filter(t => !t.isBuiltIn);
-      expect(customTemplates.length).toBe(2);
-      
-      // Check custom template properties
-      expect(customTemplates[0].name).toBe('custom1');
-      expect(customTemplates[0].path).toBe('/path/to/custom1.md');
-      expect(customTemplates[0].isBuiltIn).toBe(false);
-      
-      expect(customTemplates[1].name).toBe('custom2');
-      expect(customTemplates[1].path).toBe('/path/to/custom2.md');
-      expect(customTemplates[1].isBuiltIn).toBe(false);
+
+      // Should include custom templates
+      expect(templates.some((t) => t.name === 'custom1' && !t.isBuiltIn)).toBe(true);
+      expect(templates.some((t) => t.name === 'custom2' && !t.isBuiltIn)).toBe(true);
+
+      // Should still include built-in templates
+      expect(templates.some((t) => t.name === 'basic' && t.isBuiltIn)).toBe(true);
+    });
+
+    test('should handle empty custom templates', () => {
+      (config.get as jest.Mock).mockReturnValue(null);
+
+      const templates = listTemplates();
+
+      // Should only have built-in templates
+      expect(templates.length).toBeGreaterThanOrEqual(5);
+      expect(templates.every((t) => t.isBuiltIn)).toBe(true);
     });
   });
 
   describe('getTemplate', () => {
-    test('should return a built-in template by name', () => {
+    test('should get a built-in template by name', () => {
       const template = getTemplate('basic');
-      
+
       expect(template).toBeDefined();
       expect(template?.name).toBe('basic');
       expect(template?.isBuiltIn).toBe(true);
     });
 
-    test('should return a custom template by name', () => {
-      // Mock custom templates in config
+    test('should get a custom template by name', () => {
       const mockCustomTemplates = {
-        'custom1': '/path/to/custom1.md',
+        custom1: '/path/to/custom1.md',
       };
-      
-      (config.get as jest.Mock).mockImplementation((key) => {
-        if (key === 'customTemplates') {
-          return mockCustomTemplates;
-        }
-        return undefined;
-      });
-      
+      (config.get as jest.Mock).mockReturnValue(mockCustomTemplates);
+
       const template = getTemplate('custom1');
-      
+
       expect(template).toBeDefined();
       expect(template?.name).toBe('custom1');
       expect(template?.path).toBe('/path/to/custom1.md');
@@ -132,131 +111,154 @@ describe('Templates Utilities', () => {
 
     test('should return undefined for non-existent template', () => {
       const template = getTemplate('non-existent');
-      
+
       expect(template).toBeUndefined();
     });
   });
 
   describe('addTemplate', () => {
-    test('should add a custom template', async () => {
-      const templateName = 'new-template';
-      const templatePath = '/path/to/new-template.md';
-      
-      // Mock fs.pathExists to return true (file exists)
+    test('should add a new custom template', async () => {
       (fs.pathExists as jest.Mock).mockResolvedValue(true);
-      
-      await addTemplate(templateName, templatePath);
-      
-      // Should update the config
+      (config.get as jest.Mock).mockReturnValue({});
+
+      await addTemplate('newTemplate', '/path/to/template.md');
+
+      expect(fs.pathExists).toHaveBeenCalledWith('/path/to/template.md');
       expect(config.set).toHaveBeenCalledWith('customTemplates', {
-        [templateName]: templatePath,
+        newTemplate: '/path/to/template.md',
       });
     });
 
     test('should throw error if template name already exists', async () => {
-      // Mock existing template
-      (config.get as jest.Mock).mockImplementation((key) => {
-        if (key === 'customTemplates') {
-          return { 'existing': '/path/to/existing.md' };
-        }
-        return undefined;
-      });
-      
-      await expect(addTemplate('existing', '/path/to/new.md'))
-        .rejects.toThrow(`Template with name 'existing' already exists`);
-      
-      // Config should not be updated
+      // Mock a built-in template
+
+      await expect(addTemplate('basic', '/path/to/template.md')).rejects.toThrow(
+        "Template with name 'basic' already exists",
+      );
+
       expect(config.set).not.toHaveBeenCalled();
     });
 
-    test('should throw error if template file does not exist', async () => {
-      // Mock fs.pathExists to return false (file doesn't exist)
+    test('should throw error if source file does not exist', async () => {
       (fs.pathExists as jest.Mock).mockResolvedValue(false);
-      
-      await expect(addTemplate('new-template', '/path/to/non-existent.md'))
-        .rejects.toThrow(`Template source file '/path/to/non-existent.md' does not exist`);
-      
-      // Config should not be updated
+
+      await expect(addTemplate('newTemplate', '/path/to/non-existent.md')).rejects.toThrow(
+        "Template source file '/path/to/non-existent.md' does not exist",
+      );
+
       expect(config.set).not.toHaveBeenCalled();
+    });
+
+    test('should add to existing custom templates', async () => {
+      (fs.pathExists as jest.Mock).mockResolvedValue(true);
+      const existingTemplates = {
+        existing: '/path/to/existing.md',
+      };
+      (config.get as jest.Mock).mockReturnValue(existingTemplates);
+
+      await addTemplate('newTemplate', '/path/to/template.md');
+
+      expect(config.set).toHaveBeenCalledWith('customTemplates', {
+        existing: '/path/to/existing.md',
+        newTemplate: '/path/to/template.md',
+      });
     });
   });
 
   describe('removeTemplate', () => {
     test('should remove a custom template', () => {
-      // Mock existing custom templates
       const mockCustomTemplates = {
-        'custom1': '/path/to/custom1.md',
-        'custom2': '/path/to/custom2.md',
+        custom1: '/path/to/custom1.md',
+        custom2: '/path/to/custom2.md',
       };
-      
-      (config.get as jest.Mock).mockImplementation((key) => {
-        if (key === 'customTemplates') {
-          return mockCustomTemplates;
-        }
-        return undefined;
-      });
-      
+      (config.get as jest.Mock).mockReturnValue(mockCustomTemplates);
+
       removeTemplate('custom1');
-      
-      // Should update the config with the template removed
+
       expect(config.set).toHaveBeenCalledWith('customTemplates', {
-        'custom2': '/path/to/custom2.md',
+        custom2: '/path/to/custom2.md',
       });
     });
 
     test('should throw error if template does not exist', () => {
-      expect(() => removeTemplate('non-existent'))
-        .toThrow(`Template 'non-existent' does not exist`);
-      
-      // Config should not be updated
+      expect(() => removeTemplate('non-existent')).toThrow(
+        "Template 'non-existent' does not exist",
+      );
+
       expect(config.set).not.toHaveBeenCalled();
     });
 
     test('should throw error if trying to remove a built-in template', () => {
-      expect(() => removeTemplate('basic'))
-        .toThrow(`Cannot remove built-in template 'basic'`);
-      
-      // Config should not be updated
+      expect(() => removeTemplate('basic')).toThrow("Cannot remove built-in template 'basic'");
+
       expect(config.set).not.toHaveBeenCalled();
     });
   });
 
   describe('getTemplateContent', () => {
-    test('should read content of a template', async () => {
+    test('should get content of a template', async () => {
       const mockContent = '# Template Content';
-      
-      // Mock fs.readFile to return content
       (fs.readFile as jest.Mock).mockResolvedValue(mockContent);
-      
+
       const content = await getTemplateContent('basic');
-      
+
+      expect(fs.readFile).toHaveBeenCalledWith(expect.stringContaining('basic.md'), 'utf-8');
       expect(content).toBe(mockContent);
-      expect(fs.readFile).toHaveBeenCalled();
     });
 
     test('should throw error if template does not exist', async () => {
-      await expect(getTemplateContent('non-existent'))
-        .rejects.toThrow(`Template 'non-existent' does not exist`);
-      
-      // Should not try to read file
+      await expect(getTemplateContent('non-existent')).rejects.toThrow(
+        "Template 'non-existent' does not exist",
+      );
+
       expect(fs.readFile).not.toHaveBeenCalled();
     });
 
     test('should throw error if reading template fails', async () => {
-      // Mock fs.readFile to throw error
       (fs.readFile as jest.Mock).mockRejectedValue(new Error('Read error'));
-      
-      await expect(getTemplateContent('basic'))
-        .rejects.toThrow(`Failed to read template 'basic': Error: Read error`);
+
+      await expect(getTemplateContent('basic')).rejects.toThrow(
+        "Failed to read template 'basic': Error: Read error",
+      );
     });
   });
 
   describe('initializeTemplates', () => {
-    test('should ensure templates directory exists', async () => {
+    test('should ensure custom templates directory exists', async () => {
+      (fs.pathExists as jest.Mock).mockResolvedValue(true);
+
       await initializeTemplates();
-      
-      // Should ensure directory exists
+
       expect(fs.ensureDirSync).toHaveBeenCalled();
+      expect(fs.pathExists).toHaveBeenCalledTimes(5); // Once for each built-in template
+    });
+
+    test('should verify built-in templates are accessible', async () => {
+      (fs.pathExists as jest.Mock).mockResolvedValue(true);
+
+      await initializeTemplates();
+
+      // Should check each built-in template
+      expect(fs.pathExists).toHaveBeenCalledTimes(5);
+    });
+  });
+
+  describe('Platform-specific paths', () => {
+    test('should use home directory path on Linux', () => {
+      // Clear previous calls to path.join
+      jest.clearAllMocks();
+
+      // Ensure platform is set to linux
+      Object.defineProperty(process, 'platform', {
+        value: 'linux',
+        configurable: true,
+      });
+
+      // Call initializeTemplates which will trigger the internal getCustomTemplatesPath
+      initializeTemplates();
+
+      // Now we can check if path.join was called with the right arguments
+      expect(path.join).toHaveBeenCalledWith('/home/user', '.config', 'qmims', 'templates');
     });
   });
 });

@@ -1,9 +1,16 @@
 import { Logger, LogLevel } from '../utils/logger';
 import chalk from 'chalk';
+import os from 'os';
 
 // Mock process.stdout.write and process.stderr.write
 const mockStdoutWrite = jest.spyOn(process.stdout, 'write').mockImplementation(() => true);
 const mockStderrWrite = jest.spyOn(process.stderr, 'write').mockImplementation(() => true);
+
+// Mock os.platform to control platform detection
+jest.mock('os', () => ({
+  ...jest.requireActual('os'),
+  platform: jest.fn().mockReturnValue('linux'),
+}));
 
 describe('Logger', () => {
   beforeEach(() => {
@@ -11,7 +18,7 @@ describe('Logger', () => {
     mockStdoutWrite.mockClear();
     mockStderrWrite.mockClear();
     
-    // Set NODE_ENV to production for most tests
+    // Reset NODE_ENV for most tests
     delete process.env.NODE_ENV;
   });
 
@@ -145,5 +152,52 @@ describe('Logger', () => {
     // Clear buffer
     logger.clearLogBuffer();
     expect(logger.getLogBuffer()).toHaveLength(0);
+  });
+
+  test('should format messages with platform-specific line endings', () => {
+    // Test Linux line endings
+    (os.platform as jest.Mock).mockReturnValue('linux');
+    
+    const logger = new Logger();
+    logger.info('Linux message');
+    
+    expect(mockStdoutWrite).toHaveBeenCalledWith(
+      expect.stringMatching(/Linux message\n$/)
+    );
+    
+    mockStdoutWrite.mockClear();
+    
+    // Test Windows line endings
+    (os.platform as jest.Mock).mockReturnValue('win32');
+    
+    logger.info('Windows message');
+    
+    expect(mockStdoutWrite).toHaveBeenCalledWith(
+      expect.stringMatching(/Windows message\r\n$/)
+    );
+  });
+
+  test('should not add line ending if message already has one', () => {
+    (os.platform as jest.Mock).mockReturnValue('linux');
+    
+    const logger = new Logger();
+    logger.info('Message with ending\n');
+    
+    expect(mockStdoutWrite).toHaveBeenCalledWith(
+      'Message with ending\n'
+    );
+  });
+
+  test('should handle SILENT log level', () => {
+    const logger = new Logger(false, LogLevel.SILENT);
+    
+    logger.error('Error message');
+    logger.warn('Warning message');
+    logger.info('Info message');
+    logger.success('Success message');
+    logger.debug('Debug message');
+    
+    expect(mockStdoutWrite).not.toHaveBeenCalled();
+    expect(mockStderrWrite).not.toHaveBeenCalled();
   });
 });
