@@ -1,6 +1,6 @@
 {
   "name": "qmims",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "description": "AI-Powered README Generation & Editing using Amazon Q",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
