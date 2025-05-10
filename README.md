@@ -30,7 +30,7 @@ Before installing qmims, ensure you have:
    ```
 
 2. **Amazon Q Developer CLI**: Must be installed and authenticated
-   - [Install Amazon Q Developer CLI](https://aws.amazon.com/q/developer/get-started/cli/)
+   - [Install Amazon Q Developer CLI](https://docs.aws.amazon.com/amazonq/latest/qdeveloper-ug/command-line-installing.html)
    - Authenticate with:
      ```bash
      q login
