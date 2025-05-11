@@ -2,8 +2,11 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
 [![Node.js Version](https://img.shields.io/badge/node-%3E%3D18.0.0-brightgreen.svg)](https://nodejs.org/)
+[![Documentation](https://img.shields.io/badge/docs-qmims.vercel.app-blue.svg)](https://qmims.vercel.app/docs/introduction)
 
 **qmims** (Q, Make It Make Sense!) is a command-line tool that leverages Amazon Q Developer CLI to automatically generate, update, and refine README.md files for your projects. It helps you create clear, comprehensive, and contextually relevant documentation with minimal effort.
+
+> 📚 **[Visit our comprehensive documentation](https://qmims.vercel.app/docs/introduction)** for detailed guides, examples, and best practices.
 
 ## Features
 
@@ -17,7 +20,11 @@
 - **Configuration Management**: Customize default behaviors and settings
 - **Interactive Permissions**: Review and approve AI-suggested changes before they're applied
 
+> 🔍 **[Explore all features](https://qmims.vercel.app/docs/generation-modes)** including generation modes, templates, and embedded instructions.
+
 ## Installation
+
+> ⚡ **[Quick installation guide](https://qmims.vercel.app/docs/installation)** available in our docs.
 
 ### Prerequisites
 
@@ -54,6 +61,8 @@ qmims --version
 
 ## Usage
 
+> 📖 **[Full command reference](https://qmims.vercel.app/docs/command-reference)** with examples and tutorials.
+
 ### Generate a README
 
 ```bash
@@ -73,6 +82,8 @@ qmims generate --output DOCS.md
 qmims generate /path/to/project
 ```
 
+> 🔧 **[Generate command documentation](https://qmims.vercel.app/docs/command-reference/generate)** for all available options and examples.
+
 ### Edit an Existing README
 
 ```bash
@@ -82,6 +93,8 @@ qmims edit
 # Edit a specific file
 qmims edit path/to/README.md
 ```
+
+> ✏️ **[Edit command documentation](https://qmims.vercel.app/docs/command-reference/edit)** for detailed usage information.
 
 ### Using Embedded Instructions
 
@@ -103,6 +116,8 @@ Then run:
 qmims edit
 ```
 
+> 💡 **[Embedded instructions guide](https://qmims.vercel.app/docs/embedded-instructions)** for advanced usage techniques.
+
 ### Manage Configuration
 
 ```bash
@@ -115,6 +130,8 @@ qmims config get defaults.mode
 # Set a configuration value
 qmims config set defaults.templateName detailed
 ```
+
+> ⚙️ **[Config command documentation](https://qmims.vercel.app/docs/command-reference/config)** for all configuration options.
 
 ### Manage Templates
 
@@ -129,7 +146,11 @@ qmims templates add my-template path/to/template.md
 qmims templates remove my-template
 ```
 
+> 📝 **[Templates command documentation](https://qmims.vercel.app/docs/command-reference/templates)** and **[Working with templates guide](https://qmims.vercel.app/docs/templates)**.
+
 ## Operational Modes
+
+> 🧩 **[Detailed generation modes guide](https://qmims.vercel.app/docs/generation-modes)** available in our documentation.
 
 ### Auto Mode
 
@@ -172,6 +193,8 @@ qmims generate --mode instruct
 - `--dry-run`: Show what would be done without making changes
 - `--verbose`: Show detailed output for debugging
 
+> 🛠️ **[Advanced usage guide](https://qmims.vercel.app/docs/advanced-usage)** for power users.
+
 ## Configuration
 
 Configuration settings are stored in:
@@ -185,9 +208,13 @@ Common configuration keys:
 - `defaults.templateName`: Default template name
 - `q.autoApproveEdits`: Automatically approve edits (use with caution)
 
+> 🔧 **[Configuration system documentation](https://qmims.vercel.app/docs/configuration)** for all available options.
+
 ## Contributing
 
 Contributions are welcome! Please feel free to submit a Pull Request.
+
+> 👥 **[Best practices](https://qmims.vercel.app/docs/best-practices)** to help you get the most out of qmims.
 
 ## License
 
@@ -198,6 +225,10 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 - **Amazon Web Services**: For providing the Amazon Q Developer CLI
 - **Node.js Community**: For the robust runtime and ecosystem
 
+> 🔧 **[Troubleshooting guide](https://qmims.vercel.app/docs/troubleshooting)** if you encounter any issues.
+
 ## Made with ❤️
 
 This project was created with passion and dedication to simplify documentation workflows for developers. We hope it makes your README creation process more enjoyable and efficient!
+
+> 🌟 **[Visit our documentation](https://qmims.vercel.app/docs/introduction)** for the latest updates, guides, and troubleshooting resources.
