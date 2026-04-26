@@ -24,13 +24,15 @@ jest.mock('yargs', () => {
     strict: jest.fn().mockReturnThis(),
     parse: jest.fn().mockResolvedValue({}),
   };
-  
+
   // Create a factory function that returns the mock instance
-  const mockYargs: any = jest.fn().mockReturnValue(yargsInstance);
-  
+  const mockYargs = jest.fn().mockReturnValue(yargsInstance) as jest.Mock & {
+    terminalWidth: jest.Mock<number, []>;
+  };
+
   // Add the terminalWidth property to the factory function
   mockYargs.terminalWidth = jest.fn().mockReturnValue(80);
-  
+
   return mockYargs;
 });
 
@@ -52,7 +54,7 @@ jest.mock('../utils/logger', () => {
     setVerbose: jest.fn(),
     setLevel: jest.fn(),
   };
-  
+
   return {
     Logger: jest.fn().mockImplementation(() => mockLogger),
     LogLevel: {
@@ -104,23 +106,23 @@ jest.mock('../commands/templates', () => ({
 const originalExit = process.exit;
 
 describe('CLI Entry Point', () => {
-  let mockYargs: any;
-  let mockLogger: any;
-  
+  let mockYargs: ReturnType<typeof yargs>;
+  let mockLogger: InstanceType<typeof Logger>;
+
   beforeEach(() => {
     jest.clearAllMocks();
-    
+
     // Get the mocked instances
     mockYargs = yargs();
     mockLogger = new Logger(false, LogLevel.INFO);
-    
+
     // Reset process.argv
     process.argv = ['node', 'index.js'];
-    
+
     // Mock process.exit for each test
-    process.exit = jest.fn() as any;
+    process.exit = jest.fn() as unknown as typeof process.exit;
   });
-  
+
   afterAll(() => {
     // Restore original process.exit
     process.exit = originalExit;
@@ -128,13 +130,13 @@ describe('CLI Entry Point', () => {
 
   test('should initialize templates on startup', async () => {
     await main();
-    
+
     expect(initializeTemplates).toHaveBeenCalled();
   });
 
   test('should create CLI parser with correct configuration', async () => {
     await main();
-    
+
     expect(yargs).toHaveBeenCalled();
     expect(mockYargs.scriptName).toHaveBeenCalledWith('qmims');
     expect(mockYargs.usage).toHaveBeenCalledWith('$0 <command> [options]');
@@ -149,7 +151,7 @@ describe('CLI Entry Point', () => {
 
   test('should register all commands', async () => {
     await main();
-    
+
     expect(mockYargs.command).toHaveBeenCalledWith(generateCommand);
     expect(mockYargs.command).toHaveBeenCalledWith(editCommand);
     expect(mockYargs.command).toHaveBeenCalledWith(configCommand);
@@ -165,9 +167,9 @@ describe('CLI Entry Point', () => {
   test('should handle errors gracefully', async () => {
     const testError = new Error('Test error');
     (initializeTemplates as jest.Mock).mockRejectedValueOnce(testError);
-    
+
     await main();
-    
+
     expect(mockLogger.error).toHaveBeenCalledWith('Test error');
     expect(process.exit).toHaveBeenCalledWith(1);
   });
@@ -175,9 +177,9 @@ describe('CLI Entry Point', () => {
   test('should handle non-Error objects in catch block', async () => {
     const testError = 'String error';
     (initializeTemplates as jest.Mock).mockRejectedValueOnce(testError);
-    
+
     await main();
-    
+
     expect(mockLogger.error).toHaveBeenCalledWith('String error');
     expect(process.exit).toHaveBeenCalledWith(1);
   });

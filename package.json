@@ -1,7 +1,7 @@
 {
   "name": "qmims",
-  "version": "0.0.2",
-  "description": "AI-Powered README Generation & Editing using Amazon Q",
+  "version": "0.1.0",
+  "description": "AI-Powered README Generation & Editing using Kiro CLI",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "bin": {
@@ -9,7 +9,7 @@
   },
   "scripts": {
     "build": "tsc && pnpm run copy-templates",
-    "copy-templates": "xcopy /E /I /Y \"src\\templates\" \"dist\\templates\"",
+    "copy-templates": "node scripts/copy-templates.js",
     "start": "node dist/index.js",
     "dev": "ts-node src/index.ts",
     "test": "jest",
@@ -22,7 +22,7 @@
     "cli",
     "ai",
     "readme",
-    "amazon-q",
+    "kiro-cli",
     "documentation"
   ],
   "author": "Wassim Soltani",

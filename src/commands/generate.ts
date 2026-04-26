@@ -4,7 +4,7 @@ import chalk from 'chalk';
 import prompts from 'prompts';
 import { Arguments, Argv } from 'yargs';
 import { config } from '../utils/config';
-import { checkQCli, getQCliInstallInstructions, QChatProcess } from '../utils/q-cli';
+import { checkKiroCli, getKiroCliGuidance, KiroChatProcess } from '../utils/kiro-cli';
 import { parseInstructions, readMarkdownFile, writeMarkdownFile } from '../utils/markdown';
 import { getTemplate, getTemplateContent, listTemplates } from '../utils/templates';
 import { Logger } from '../utils/logger';
@@ -80,23 +80,22 @@ export const handler = async (argv: Arguments<GenerateOptions>): Promise<void> =
     mode = 'auto',
     force = false,
     listAvailableTemplates = false,
-    yes = false,
     dryRun = false,
     verbose = false,
   } = argv;
 
-  const logger = new Logger(verbose);
+  const yes =
+    typeof argv.yes === 'boolean' ? argv.yes : config.get<boolean>('q.autoApproveEdits') || false;
 
-  // Resolve the absolute project path
+  const logger = new Logger(verbose);
   const absoluteProjectPath = path.resolve(projectPath);
 
-  // Check if the project directory exists
   if (!fs.existsSync(absoluteProjectPath)) {
     logger.error(`Project directory '${absoluteProjectPath}' does not exist`);
     process.exit(1);
+    return;
   }
 
-  // If --list-available-templates is specified, list templates and exit
   if (listAvailableTemplates) {
     if (!mode.startsWith('template')) {
       logger.warn('Note: --list-available-templates is only relevant with --mode template');
@@ -106,42 +105,42 @@ export const handler = async (argv: Arguments<GenerateOptions>): Promise<void> =
     const templates = listTemplates();
 
     logger.info(chalk.cyan('\nBuilt-in Templates:'));
-    templates.filter((t) => t.isBuiltIn).forEach((t) => logger.info(`  - ${t.name}`));
+    templates
+      .filter((template) => template.isBuiltIn)
+      .forEach((template) => logger.info(`  - ${template.name}`));
 
     logger.info(chalk.cyan('\nCustom Templates:'));
-    const customTemplates = templates.filter((t) => !t.isBuiltIn);
+    const customTemplates = templates.filter((template) => !template.isBuiltIn);
     if (customTemplates.length === 0) {
       logger.info('  No custom templates found');
     } else {
-      customTemplates.forEach((t) => logger.info(`  - ${t.name}`));
+      customTemplates.forEach((template) => logger.info(`  - ${template.name}`));
     }
 
     logger.info('\nUse: qmims generate --mode template:TEMPLATE_NAME');
     return;
   }
 
-  // Check if Amazon Q CLI is installed and authenticated
   if (!dryRun) {
-    const qCliAvailable = await checkQCli();
-    if (!qCliAvailable) {
-      logger.error(getQCliInstallInstructions());
+    const kiroCliStatus = await checkKiroCli(verbose);
+    if (kiroCliStatus !== 'ready') {
+      logger.error(getKiroCliGuidance(kiroCliStatus));
       process.exit(1);
+      return;
     }
   }
 
-  // Parse the mode option
-  let [modeType, modeValue] = mode.includes(':') ? mode.split(':') : [mode, undefined];
+  const [modeType, modeValue] = mode.includes(':') ? mode.split(':', 2) : [mode, undefined];
 
   if (!['auto', 'template', 'instruct'].includes(modeType)) {
     logger.error(`Invalid mode '${modeType}'. Must be 'auto', 'template', or 'instruct'`);
     process.exit(1);
+    return;
   }
 
-  // Determine the output file path
   const outputFilePath = path.join(absoluteProjectPath, output);
-
-  // Check if the output file already exists
   const fileExists = fs.existsSync(outputFilePath);
+
   if (fileExists && !force && !dryRun && !yes) {
     const response = await prompts({
       type: 'confirm',
@@ -158,13 +157,13 @@ export const handler = async (argv: Arguments<GenerateOptions>): Promise<void> =
     logger.info(`File '${output}' already exists. Overwriting automatically due to --yes flag.`);
   }
 
-  // Handle dry run mode
   if (dryRun) {
     logger.info(chalk.cyan('\n--- DRY RUN MODE - No changes will be made ---'));
     logger.info(`Project directory: ${chalk.bold(absoluteProjectPath)}`);
     logger.info(`Output file: ${chalk.bold(outputFilePath)}`);
     logger.info(`Mode: ${chalk.bold(modeType)}${modeValue ? `:${modeValue}` : ''}`);
     logger.info(`File exists: ${chalk.bold(fileExists ? 'Yes' : 'No')}`);
+    logger.info(`Auto-approve enabled: ${chalk.bold(yes ? 'Yes' : 'No')}`);
 
     if (modeType === 'template' && modeValue) {
       const template = getTemplate(modeValue);
@@ -179,25 +178,34 @@ export const handler = async (argv: Arguments<GenerateOptions>): Promise<void> =
 
     logger.info(chalk.cyan('\nActions that would be taken:'));
 
-    if (fileExists && !force) {
+    if (fileExists && !force && !yes) {
       logger.info('- Would prompt to overwrite existing file');
     }
 
     logger.info(
       `- Would ${fileExists ? 'overwrite' : 'create'} file: ${chalk.bold(outputFilePath)}`,
     );
-    logger.info('- Would start Amazon Q chat session');
+    logger.info('- Would start Kiro CLI chat session');
+    logger.info(
+      '- Would run Kiro with trust-all-tools enabled (required for non-interactive mode)',
+    );
 
     if (modeType === 'auto') {
-      logger.info('- Would ask Amazon Q to analyze project and generate README');
+      logger.info('- Would ask Kiro to analyze the project and generate README content');
     } else if (modeType === 'template') {
       logger.info(`- Would use ${modeValue || 'default'} template to structure README`);
-      logger.info('- Would ask Amazon Q to fill in template sections');
+      logger.info('- Would ask Kiro to fill in the template sections');
     } else if (modeType === 'instruct') {
       if (modeValue) {
-        logger.info(`- Would process instructions in ${modeValue}`);
+        logger.info(
+          `- Would read embedded instructions from: ${chalk.bold(path.resolve(modeValue))}`,
+        );
+        logger.info('- Would combine all parsed qmims instructions into one structured prompt');
       } else {
-        logger.info('- Would create README with default instruction');
+        logger.info(
+          `- Would read embedded instructions from the output file: ${chalk.bold(outputFilePath)}`,
+        );
+        logger.info('- Would combine all parsed qmims instructions into one structured prompt');
       }
     }
 
@@ -205,7 +213,6 @@ export const handler = async (argv: Arguments<GenerateOptions>): Promise<void> =
     return;
   }
 
-  // Handle different generation modes
   try {
     if (modeType === 'auto') {
       await generateAuto(absoluteProjectPath, outputFilePath, { yes, verbose, logger });
@@ -215,7 +222,7 @@ export const handler = async (argv: Arguments<GenerateOptions>): Promise<void> =
         verbose,
         logger,
       });
-    } else if (modeType === 'instruct') {
+    } else {
       await generateInstruct(absoluteProjectPath, outputFilePath, modeValue, {
         yes,
         verbose,
@@ -223,16 +230,13 @@ export const handler = async (argv: Arguments<GenerateOptions>): Promise<void> =
       });
     }
 
-    logger.success(`\nThank you for using qmims!`);
+    logger.success('\nThank you for using qmims!');
   } catch (error) {
     logger.error(error instanceof Error ? error.message : String(error));
     process.exit(1);
   }
 };
 
-/**
- * Generate README in auto mode
- */
 async function generateAuto(
   projectPath: string,
   outputPath: string,
@@ -241,77 +245,33 @@ async function generateAuto(
   const { logger } = options;
   logger.info(chalk.cyan('Generating README in auto mode...'));
 
-  // Create initial README content
   const initialContent = '# Project README\n\n<!-- Generated by qmims -->\n';
   await writeMarkdownFile(outputPath, initialContent);
 
-  // Set up Q Chat process
-  let qChatOutput = '';
+  const prompt = [
+    `Please analyze the project in the current working directory and generate a comprehensive Markdown README.`,
+    `Write the complete final README content to ${outputPath}.`,
+    `Include sections for project overview, installation, usage, and any other relevant information supported by the project structure and code.`,
+    `Use the file system tools needed to save the complete README content.`,
+  ].join(' ');
 
-  const qChat = new QChatProcess(
+  await runKiroPrompt(
+    projectPath,
+    prompt,
     {
-      cwd: projectPath,
+      yes: options.yes,
       verbose: options.verbose,
-      autoApprove: options.yes,
     },
     {
-      onOutput: (text) => {
-        if (options.verbose) {
-          logger.debug(text);
-        }
-        qChatOutput += text;
-      },
-      onError: (error) => {
-        logger.error(error.message);
-      },
-      onExit: (code) => {
-        if (code !== 0 && code !== null) {
-          logger.error(`Amazon Q process exited with code ${code}`);
-        }
-      },
+      logger,
+      progressMessage: '\nKiro is generating your README. This may take a few minutes.',
+      successMessage: '\nSuccessfully generated README.md',
+      failurePrefix: 'Error generating README',
+      interruptMessage: '\nGeneration interrupted by user',
     },
   );
-
-  // Start Q Chat process
-  if (options.verbose) {
-    logger.debug('Starting Q Chat process');
-  }
-  qChat.start();
-
-  // Send prompt to generate README with completion marker
-  qChat.sendMessage(
-    'Please analyze this project and generate a comprehensive README.md file. Include sections for project overview, installation, usage, and any other relevant information based on the project structure and code.',
-  );
-
-  // Wait for Q to finish or user to terminate
-  logger.info(chalk.yellow('\nAmazon Q is generating your README. This may take a few minutes.'));
-  logger.info(chalk.yellow('Press Ctrl+C to cancel at any time.'));
-
-  // Set up a single SIGINT handler for the entire process
-  const sigintHandler = () => {
-    logger.warn('\nGeneration interrupted by user');
-    qChat.terminate();
-    process.exit(0);
-  };
-
-  // Use once to ensure the handler is only added once
-  process.once('SIGINT', sigintHandler);
-
-  try {
-    // Execute the command and wait for it to complete
-    await qChat.stop();
-    logger.success('\nSuccessfully generated README.md');
-  } catch (error) {
-    logger.error(
-      `Error generating README: ${error instanceof Error ? error.message : String(error)}`,
-    );
-    process.exit(1);
-  }
 }
 
-/**
- * Generate README using a template
- */
 async function generateTemplate(
   projectPath: string,
   outputPath: string,
@@ -320,17 +280,15 @@ async function generateTemplate(
 ): Promise<void> {
   const { logger } = options;
 
-  // Log function start if in verbose mode
   if (options.verbose) {
     logger.debug('Starting generateTemplate function');
   }
 
-  const defaultTemplateName = config.get('defaults.templateName') || 'basic';
+  const defaultTemplateName = config.get<string>('defaults.templateName') || 'basic';
   const finalTemplateName = templateName || defaultTemplateName;
 
   logger.info(chalk.cyan(`Generating README using template: ${finalTemplateName}...`));
 
-  // Get the template
   const template = getTemplate(finalTemplateName);
   if (!template) {
     throw new Error(`Template '${finalTemplateName}' not found`);
@@ -340,73 +298,33 @@ async function generateTemplate(
     logger.debug(`Found template: ${template.name}`);
   }
 
-  // Get template content
   const templateContent = await getTemplateContent(finalTemplateName);
-
-  // Write template content to output file
   await writeMarkdownFile(outputPath, templateContent);
 
-  // Set up Q Chat process
-  const qChat = new QChatProcess(
+  const prompt = [
+    `A README template has already been written to ${outputPath}.`,
+    `Please analyze the project in the current working directory, fill in every relevant section of that template, and preserve the template structure.`,
+    `Write the complete final README content back to ${outputPath}.`,
+    `Use the file system tools needed to save the full file.`,
+  ].join(' ');
+
+  await runKiroPrompt(
+    projectPath,
+    prompt,
     {
-      cwd: projectPath,
+      yes: options.yes,
       verbose: options.verbose,
-      autoApprove: options.yes,
     },
     {
-      onOutput: (text) => {
-        if (options.verbose) {
-          logger.debug(text);
-        }
-      },
-      onError: (error) => {
-        logger.error(error.message);
-      },
-      onExit: (code) => {
-        if (code !== 0 && code !== null) {
-          logger.error(`Amazon Q process exited with code ${code}`);
-        }
-      },
+      logger,
+      progressMessage: '\nKiro is filling in your template. This may take a few minutes.',
+      successMessage: '\nTemplate filling completed successfully.',
+      failurePrefix: 'Error filling template',
+      interruptMessage: '\nGeneration interrupted by user',
     },
   );
-
-  // Start Q Chat process
-  qChat.start();
-
-  // Send prompt to fill in template with completion marker
-  qChat.sendMessage(
-    "I've created a README.md file with a template structure. Please analyze this project and fill in the content for each section in the template. The template includes comments with instructions for each section.",
-  );
-
-  // Wait for Q to finish or user to terminate
-  logger.info(chalk.yellow('\nAmazon Q is filling in your template. This may take a few minutes.'));
-  logger.info(chalk.yellow('Press Ctrl+C to cancel at any time.'));
-
-  // Set up a single SIGINT handler for the entire process
-  const sigintHandler = () => {
-    logger.warn('\nGeneration interrupted by user');
-    qChat.terminate();
-    process.exit(0);
-  };
-
-  // Use once to ensure the handler is only added once
-  process.once('SIGINT', sigintHandler);
-
-  try {
-    // Execute the command and wait for it to complete
-    await qChat.stop();
-    logger.success('\nTemplate filling completed successfully.');
-  } catch (error) {
-    logger.error(
-      `Error filling template: ${error instanceof Error ? error.message : String(error)}`,
-    );
-    process.exit(1);
-  }
 }
 
-/**
- * Generate README using instruct mode
- */
 async function generateInstruct(
   projectPath: string,
   outputPath: string,
@@ -415,7 +333,6 @@ async function generateInstruct(
 ): Promise<void> {
   const { logger } = options;
 
-  // Determine the instruction file path
   let instructFilePath: string;
   if (instructFile) {
     instructFilePath = path.resolve(instructFile);
@@ -423,7 +340,6 @@ async function generateInstruct(
       throw new Error(`Instruction file '${instructFile}' not found`);
     }
   } else {
-    // Use the README.md itself as the instruction file
     instructFilePath = outputPath;
   }
 
@@ -431,10 +347,7 @@ async function generateInstruct(
     chalk.cyan(`Generating README using instructions from: ${path.basename(instructFilePath)}...`),
   );
 
-  // Read the instruction file
   const fileContent = await readMarkdownFile(instructFilePath);
-
-  // Parse instructions from the file
   const instructions = parseInstructions(fileContent);
 
   if (instructions.length === 0) {
@@ -444,22 +357,80 @@ async function generateInstruct(
   }
 
   logger.info(`Found ${instructions.length} instruction${instructions.length === 1 ? '' : 's'}:`);
-  instructions.forEach((instr, index) => {
+  instructions.forEach((instruction, index) => {
     logger.info(
-      `  ${index + 1}. ${instr.instruction.substring(0, 100)}${instr.instruction.length > 100 ? '...' : ''}`,
+      `  ${index + 1}. ${instruction.instruction.substring(0, 100)}${instruction.instruction.length > 100 ? '...' : ''}`,
     );
   });
 
-  // Create initial README content if it doesn't exist
   if (!fs.existsSync(outputPath) || instructFilePath !== outputPath) {
     const initialContent = '# Project README\n\n<!-- Generated by qmims -->\n';
     await writeMarkdownFile(outputPath, initialContent);
   }
 
-  // Set up Q Chat process
-  const qChat = new QChatProcess(
+  const structuredInstructions = instructions
+    .map((instruction, index) => {
+      const locationParts = [`line ${instruction.lineNumber}`];
+      if (
+        typeof instruction.targetStart === 'number' &&
+        typeof instruction.targetEnd === 'number'
+      ) {
+        locationParts.push(`target lines ${instruction.targetStart}-${instruction.targetEnd}`);
+      }
+
+      return [
+        `${index + 1}. ${instruction.instruction}`,
+        `   Source location: ${locationParts.join(', ')}`,
+      ].join('\n');
+    })
+    .join('\n');
+
+  const prompt = [
+    `Update the Markdown README at ${outputPath}.`,
+    `Use ALL of the embedded qmims instructions discovered from ${instructFilePath}.`,
+    `Every instruction below must materially influence the final result.`,
+    `If any instructions overlap, reconcile them into one coherent final README rather than ignoring any of them.`,
+    `Read the existing file content before editing, then write the complete final file back to ${outputPath}.`,
+    `Use the file system tools needed to save the full file.`,
+    ``,
+    `Instructions:`,
+    structuredInstructions,
+  ].join('\n');
+
+  await runKiroPrompt(
+    projectPath,
+    prompt,
     {
-      cwd: projectPath,
+      yes: options.yes,
+      verbose: options.verbose,
+    },
+    {
+      logger,
+      progressMessage: '\nKiro is processing your instructions. This may take a few minutes.',
+      successMessage: '\nInstruction processing completed successfully.',
+      failurePrefix: 'Error processing instructions',
+      interruptMessage: '\nProcessing interrupted by user',
+    },
+  );
+}
+
+async function runKiroPrompt(
+  cwd: string,
+  prompt: string,
+  options: { yes: boolean; verbose: boolean },
+  messages: {
+    logger: Logger;
+    progressMessage: string;
+    successMessage: string;
+    failurePrefix: string;
+    interruptMessage: string;
+  },
+): Promise<void> {
+  const { logger } = messages;
+
+  const kiroChat = new KiroChatProcess(
+    {
+      cwd,
       verbose: options.verbose,
       autoApprove: options.yes,
     },
@@ -474,44 +445,35 @@ async function generateInstruct(
       },
       onExit: (code) => {
         if (code !== 0 && code !== null) {
-          logger.error(`Amazon Q process exited with code ${code}`);
+          logger.error(`Kiro CLI process exited with code ${code}`);
         }
       },
     },
   );
 
-  // Start Q Chat process
-  qChat.start();
+  kiroChat.start();
+  kiroChat.sendMessage(prompt);
 
-  // Send prompt to process instructions with completion marker
-  qChat.sendMessage(
-    `I have a README.md file that I'd like you to edit based on the following instructions: ${instructions[0].instruction}.`,
-  );
-
-  // Wait for Q to finish or user to terminate
-  logger.info(
-    chalk.yellow('\nAmazon Q is processing your instructions. This may take a few minutes.'),
-  );
+  logger.info(chalk.yellow(messages.progressMessage));
   logger.info(chalk.yellow('Press Ctrl+C to cancel at any time.'));
 
-  // Set up a single SIGINT handler for the entire process
   const sigintHandler = () => {
-    logger.warn('\nProcessing interrupted by user');
-    qChat.terminate();
+    logger.warn(messages.interruptMessage);
+    kiroChat.terminate();
     process.exit(0);
   };
 
-  // Use once to ensure the handler is only added once
   process.once('SIGINT', sigintHandler);
 
   try {
-    // Execute the command and wait for it to complete
-    await qChat.stop();
-    logger.success('\nInstruction processing completed successfully.');
+    await kiroChat.stop();
+    logger.success(messages.successMessage);
   } catch (error) {
     logger.error(
-      `Error processing instructions: ${error instanceof Error ? error.message : String(error)}`,
+      `${messages.failurePrefix}: ${error instanceof Error ? error.message : String(error)}`,
     );
     process.exit(1);
+  } finally {
+    process.removeListener('SIGINT', sigintHandler);
   }
 }

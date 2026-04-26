@@ -2,6 +2,14 @@ import Conf from 'conf';
 import os from 'os';
 import path from 'path';
 
+interface ConfigStore {
+  get: <T>(key: string) => T;
+  set: <T>(key: string, value: T) => void;
+  delete: (key: string) => void;
+  store: QmimsConfig;
+  path: string;
+}
+
 export interface QmimsConfig {
   user: {
     name?: string;
@@ -15,12 +23,6 @@ export interface QmimsConfig {
   q: {
     autoApproveEdits: boolean;
   };
-  git: {
-    autoCommit: {
-      enabled: boolean;
-      messageFormat: string;
-    };
-  };
 }
 
 const defaultConfig: QmimsConfig = {
@@ -32,12 +34,6 @@ const defaultConfig: QmimsConfig = {
   q: {
     autoApproveEdits: false,
   },
-  git: {
-    autoCommit: {
-      enabled: false,
-      messageFormat: 'docs: Update {fileName} via qmims ({mode})',
-    },
-  },
 };
 
 // Determine the configuration file location based on OS
@@ -45,9 +41,9 @@ const getConfigPath = (): string => {
   const platform = process.platform;
   if (platform === 'win32') {
     return path.join(process.env.APPDATA || '', 'qmims');
-  } else {
-    return path.join(os.homedir(), '.config', 'qmims');
   }
+
+  return path.join(os.homedir(), '.config', 'qmims');
 };
 
 // Create and export the configuration instance
@@ -56,18 +52,16 @@ export const config = new Conf({
   configName: 'config',
   cwd: getConfigPath(),
   defaults: defaultConfig,
-  // Ensure the config is initialized with default values
   schema: {
     user: { type: 'object' },
     defaults: { type: 'object' },
     q: { type: 'object' },
-    git: { type: 'object' },
   },
-}) as any;
+}) as unknown as ConfigStore;
 
 // Initialize the config with default values if it's empty
 if (Object.keys(config.store).length === 0) {
-  config.store = defaultConfig;
+  config.store = { ...defaultConfig };
 }
 
 // Helper functions for config management
@@ -84,13 +78,31 @@ export const deleteConfig = (key: string): void => {
 };
 
 export const listConfig = (): QmimsConfig => {
-  // Ensure we're returning the actual configuration
-  // Add some default values if the store is empty
   const store = config.store as QmimsConfig;
 
   if (!store || Object.keys(store).length === 0) {
-    return defaultConfig;
+    return {
+      ...defaultConfig,
+      user: { ...defaultConfig.user },
+      defaults: { ...defaultConfig.defaults },
+      q: { ...defaultConfig.q },
+    };
   }
 
-  return store;
+  return {
+    ...defaultConfig,
+    ...store,
+    user: {
+      ...defaultConfig.user,
+      ...(store.user || {}),
+    },
+    defaults: {
+      ...defaultConfig.defaults,
+      ...(store.defaults || {}),
+    },
+    q: {
+      ...defaultConfig.q,
+      ...(store.q || {}),
+    },
+  };
 };

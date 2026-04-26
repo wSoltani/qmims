@@ -1,7 +1,7 @@
 import chalk from 'chalk';
 import prompts from 'prompts';
 import { Arguments, Argv } from 'yargs';
-import { config, deleteConfig, getConfig, listConfig, QmimsConfig, setConfig } from '../utils/config';
+import { deleteConfig, getConfig, listConfig, QmimsConfig, setConfig } from '../utils/config';
 import { Logger } from '../utils/logger';
 
 export interface ConfigOptions {
@@ -22,8 +22,8 @@ export const builder = (yargs: Argv): Argv<ConfigOptions> => {
     .command(
       'list',
       'List all configuration values',
-      (yargs) => yargs
-        .option('verbose', {
+      (yargs) =>
+        yargs.option('verbose', {
           describe: 'Show verbose output',
           type: 'boolean',
           default: false,
@@ -92,8 +92,8 @@ export const builder = (yargs: Argv): Argv<ConfigOptions> => {
     .command(
       'setup',
       'Interactive setup wizard for configuration',
-      (yargs) => yargs
-        .option('verbose', {
+      (yargs) =>
+        yargs.option('verbose', {
           describe: 'Show verbose output',
           type: 'boolean',
           default: false,
@@ -143,8 +143,7 @@ async function handleListConfig(logger: Logger): Promise<void> {
   }
 
   logger.info(chalk.bold('\nConfiguration Values:'));
-  
-  // Display user section
+
   logger.info(chalk.cyan('\nUser:'));
   if (configValues.user && Object.keys(configValues.user).length > 0) {
     Object.entries(configValues.user).forEach(([key, value]) => {
@@ -154,7 +153,6 @@ async function handleListConfig(logger: Logger): Promise<void> {
     logger.info('  No user values configured');
   }
 
-  // Display defaults section
   logger.info(chalk.cyan('\nDefaults:'));
   if (configValues.defaults) {
     Object.entries(configValues.defaults).forEach(([key, value]) => {
@@ -162,19 +160,11 @@ async function handleListConfig(logger: Logger): Promise<void> {
     });
   }
 
-  // Display q section
-  logger.info(chalk.cyan('\nAmazon Q:'));
+  logger.info(chalk.cyan('\nKiro:'));
   if (configValues.q) {
     Object.entries(configValues.q).forEach(([key, value]) => {
       logger.info(`  ${key}: ${chalk.green(value)}`);
     });
-  }
-
-  // Display git section
-  logger.info(chalk.cyan('\nGit:'));
-  if (configValues.git && configValues.git.autoCommit) {
-    logger.info(`  autoCommit.enabled: ${chalk.green(configValues.git.autoCommit.enabled)}`);
-    logger.info(`  autoCommit.messageFormat: ${chalk.green(configValues.git.autoCommit.messageFormat)}`);
   }
 
   logger.info('\nTo modify configuration, use:');
@@ -192,7 +182,7 @@ async function handleGetConfig(key: string, logger: Logger): Promise<void> {
       logger.error(`Configuration key '${key}' not found`);
       return;
     }
-    
+
     const displayValue = typeof value === 'object' ? JSON.stringify(value, null, 2) : value;
     logger.info(`${key}: ${chalk.green(displayValue)}`);
   } catch (error) {
@@ -205,8 +195,7 @@ async function handleGetConfig(key: string, logger: Logger): Promise<void> {
  */
 async function handleSetConfig(key: string, value: string, logger: Logger): Promise<void> {
   try {
-    // Convert string values to appropriate types
-    let parsedValue: any = value;
+    let parsedValue: string | number | boolean = value;
     if (value.toLowerCase() === 'true') {
       parsedValue = true;
     } else if (value.toLowerCase() === 'false') {
@@ -259,14 +248,11 @@ async function handleSetupConfig(logger: Logger): Promise<void> {
  * Run the interactive setup wizard to configure qmims
  */
 async function setupInteractive(logger: Logger): Promise<void> {
-  // Get current config to use as defaults
   const currentConfig = listConfig();
-  
-  // Setup sections
+
   await setupUserSection(currentConfig, logger);
   await setupDefaultsSection(currentConfig, logger);
-  await setupQSection(currentConfig, logger);
-  await setupGitSection(currentConfig, logger);
+  await setupKiroSection(currentConfig, logger);
 }
 
 /**
@@ -275,25 +261,32 @@ async function setupInteractive(logger: Logger): Promise<void> {
 async function setupUserSection(currentConfig: QmimsConfig, logger: Logger): Promise<void> {
   logger.info(chalk.cyan('\nUser Information'));
 
-  const userResponses = await prompts([
+  const userResponses = await prompts(
+    [
+      {
+        type: 'text',
+        name: 'name',
+        message: 'Your name:',
+        initial: currentConfig.user.name || '',
+      },
+      {
+        type: 'text',
+        name: 'email',
+        message: 'Your email:',
+        initial: currentConfig.user.email || '',
+      },
+    ],
     {
-      type: 'text',
-      name: 'name',
-      message: 'Your name:',
-      initial: currentConfig.user.name || '',
+      onCancel: () => {
+        throw new Error('canceled');
+      },
     },
-    {
-      type: 'text',
-      name: 'email',
-      message: 'Your email:',
-      initial: currentConfig.user.email || '',
-    },
-  ], { onCancel: () => { throw new Error('canceled'); } });
+  );
 
   if (userResponses.name) {
     setConfig('user.name', userResponses.name);
   }
-  
+
   if (userResponses.email) {
     setConfig('user.email', userResponses.email);
   }
@@ -305,78 +298,68 @@ async function setupUserSection(currentConfig: QmimsConfig, logger: Logger): Pro
 async function setupDefaultsSection(currentConfig: QmimsConfig, logger: Logger): Promise<void> {
   logger.info(chalk.cyan('\nDefault Settings'));
 
-  const defaultsResponses = await prompts([
+  const defaultsResponses = await prompts(
+    [
+      {
+        type: 'select',
+        name: 'mode',
+        message: 'Default generation mode:',
+        choices: [
+          { title: 'Auto (analyze project and generate README)', value: 'auto' },
+          { title: 'Template (use a template to structure README)', value: 'template' },
+          { title: 'Instruct (use custom instructions)', value: 'instruct' },
+        ],
+        initial:
+          currentConfig.defaults.mode === 'auto'
+            ? 0
+            : currentConfig.defaults.mode === 'template'
+              ? 1
+              : 2,
+      },
+      {
+        type: 'text',
+        name: 'outputFileName',
+        message: 'Default output filename:',
+        initial: currentConfig.defaults.outputFileName || 'README.md',
+      },
+    ],
     {
-      type: 'select',
-      name: 'mode',
-      message: 'Default generation mode:',
-      choices: [
-        { title: 'Auto (analyze project and generate README)', value: 'auto' },
-        { title: 'Template (use a template to structure README)', value: 'template' },
-        { title: 'Instruct (use custom instructions)', value: 'instruct' },
-      ],
-      initial: currentConfig.defaults.mode === 'auto' ? 0 : 
-               currentConfig.defaults.mode === 'template' ? 1 : 2,
+      onCancel: () => {
+        throw new Error('canceled');
+      },
     },
-    {
-      type: 'text',
-      name: 'outputFileName',
-      message: 'Default output filename:',
-      initial: currentConfig.defaults.outputFileName || 'README.md',
-    },
-  ], { onCancel: () => { throw new Error('canceled'); } });
+  );
 
   if (defaultsResponses.mode) {
     setConfig('defaults.mode', defaultsResponses.mode);
   }
-  
+
   if (defaultsResponses.outputFileName) {
     setConfig('defaults.outputFileName', defaultsResponses.outputFileName);
   }
 }
 
 /**
- * Setup the Amazon Q section of the configuration
+ * Setup the Kiro section of the configuration
  */
-async function setupQSection(currentConfig: QmimsConfig, logger: Logger): Promise<void> {
-  logger.info(chalk.cyan('\nAmazon Q Settings'));
+async function setupKiroSection(currentConfig: QmimsConfig, logger: Logger): Promise<void> {
+  logger.info(chalk.cyan('\nKiro Settings'));
 
-  const qResponses = await prompts([
+  const kiroResponses = await prompts(
+    [
+      {
+        type: 'confirm',
+        name: 'autoApproveEdits',
+        message: 'Automatically approve Kiro-driven edits?',
+        initial: currentConfig.q.autoApproveEdits || false,
+      },
+    ],
     {
-      type: 'confirm',
-      name: 'autoApproveEdits',
-      message: 'Automatically approve Amazon Q edits?',
-      initial: currentConfig.q.autoApproveEdits || false,
+      onCancel: () => {
+        throw new Error('canceled');
+      },
     },
-  ], { onCancel: () => { throw new Error('canceled'); } });
+  );
 
-  setConfig('q.autoApproveEdits', qResponses.autoApproveEdits);
-}
-
-/**
- * Setup the git section of the configuration
- */
-async function setupGitSection(currentConfig: QmimsConfig, logger: Logger): Promise<void> {
-  logger.info(chalk.cyan('\nGit Integration'));
-
-  const gitEnabled = await prompts({
-    type: 'confirm',
-    name: 'enabled',
-    message: 'Enable automatic git commits for README changes?',
-    initial: currentConfig.git.autoCommit?.enabled || false,
-  }, { onCancel: () => { throw new Error('canceled'); } });
-
-  setConfig('git.autoCommit.enabled', gitEnabled.enabled);
-
-  if (gitEnabled.enabled) {
-    const gitFormat = await prompts({
-      type: 'text',
-      name: 'messageFormat',
-      message: 'Git commit message format:',
-      initial: currentConfig.git.autoCommit?.messageFormat || 'docs: Update {fileName} via qmims ({mode})',
-      hint: 'Use {fileName} and {mode} as placeholders',
-    }, { onCancel: () => { throw new Error('canceled'); } });
-
-    setConfig('git.autoCommit.messageFormat', gitFormat.messageFormat);
-  }
+  setConfig('q.autoApproveEdits', kiroResponses.autoApproveEdits);
 }

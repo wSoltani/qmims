@@ -10,7 +10,7 @@ import { initializeTemplates } from './utils/templates';
 import { Logger, LogLevel } from './utils/logger';
 
 // Package.json info for version
-const packageJson = require('../package.json');
+import packageJson from '../package.json';
 
 async function main() {
   // Create a logger that will show info messages by default

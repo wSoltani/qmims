@@ -3,7 +3,7 @@ import { config, getConfig, setConfig, deleteConfig, listConfig } from '../utils
 // Mock the conf module
 jest.mock('conf', () => {
   // Create a more sophisticated mock store that handles nested properties
-  const mockStore: Record<string, any> = {
+  const mockStore: Record<string, unknown> = {
     user: {},
     defaults: {
       mode: 'auto',
@@ -12,47 +12,45 @@ jest.mock('conf', () => {
     q: {
       autoApproveEdits: false,
     },
-    git: {
-      autoCommit: {
-        enabled: false,
-        messageFormat: 'docs: Update {fileName} via qmims ({mode})',
-      },
-    },
   };
-  
+
+  const asRecord = (value: unknown): Record<string, unknown> => value as Record<string, unknown>;
+
   return jest.fn().mockImplementation(() => {
     return {
       get: jest.fn((key) => {
         if (!key) return mockStore;
-        
+
         // Handle nested keys (e.g., 'user.name')
         const parts = key.split('.');
-        let current = mockStore;
-        
+        let current: unknown = mockStore;
+
         for (const part of parts) {
           if (current && typeof current === 'object' && part in current) {
-            current = current[part];
+            const currentRecord = asRecord(current);
+            current = currentRecord[part];
           } else {
             return undefined;
           }
         }
-        
+
         return current;
       }),
       set: jest.fn((key, value) => {
         // Handle nested keys (e.g., 'user.name')
         const parts = key.split('.');
         let current = mockStore;
-        
+
         // Navigate to the parent object
         for (let i = 0; i < parts.length - 1; i++) {
           const part = parts[i];
           if (!(part in current)) {
             current[part] = {};
           }
-          current = current[part];
+          const currentRecord = asRecord(current);
+          current = currentRecord[part] as Record<string, unknown>;
         }
-        
+
         // Set the value on the parent object
         const lastPart = parts[parts.length - 1];
         current[lastPart] = value;
@@ -61,16 +59,17 @@ jest.mock('conf', () => {
         // Handle nested keys (e.g., 'user.name')
         const parts = key.split('.');
         let current = mockStore;
-        
+
         // Navigate to the parent object
         for (let i = 0; i < parts.length - 1; i++) {
           const part = parts[i];
           if (!(part in current)) {
             return; // Key doesn't exist, nothing to delete
           }
-          current = current[part];
+          const currentRecord = asRecord(current);
+          current = currentRecord[part] as Record<string, unknown>;
         }
-        
+
         // Delete the property from the parent object
         const lastPart = parts[parts.length - 1];
         delete current[lastPart];
@@ -144,7 +143,6 @@ describe('Config Utilities', () => {
     expect(configList).toHaveProperty('user');
     expect(configList).toHaveProperty('defaults');
     expect(configList).toHaveProperty('q');
-    expect(configList).toHaveProperty('git');
 
     // Check specific default values
     expect(configList.defaults.mode).toBe('auto');

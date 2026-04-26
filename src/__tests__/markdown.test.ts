@@ -4,18 +4,14 @@ import {
   findReadmeFile,
   readMarkdownFile,
   writeMarkdownFile,
-  createReadmeFile,
   parseInstructions,
-  extractTargetContent,
-  Instruction
+  Instruction,
 } from '../utils/markdown';
 
-// Mock fs-extra and path modules
 jest.mock('fs-extra', () => ({
   readdir: jest.fn(),
   readFile: jest.fn(),
   writeFile: jest.fn().mockResolvedValue(undefined),
-  ensureDir: jest.fn().mockResolvedValue(undefined),
 }));
 
 jest.mock('path', () => ({
@@ -34,7 +30,7 @@ describe('Markdown Utilities', () => {
       (path.join as jest.Mock).mockReturnValue('/test/dir/README.md');
 
       const result = await findReadmeFile('/test/dir');
-      
+
       expect(fs.readdir).toHaveBeenCalledWith('/test/dir');
       expect(path.join).toHaveBeenCalledWith('/test/dir', 'README.md');
       expect(result).toBe('/test/dir/README.md');
@@ -46,7 +42,7 @@ describe('Markdown Utilities', () => {
       (path.join as jest.Mock).mockReturnValue('/test/dir/readme.md');
 
       const result = await findReadmeFile('/test/dir');
-      
+
       expect(fs.readdir).toHaveBeenCalledWith('/test/dir');
       expect(path.join).toHaveBeenCalledWith('/test/dir', 'readme.md');
       expect(result).toBe('/test/dir/readme.md');
@@ -57,7 +53,7 @@ describe('Markdown Utilities', () => {
       (fs.readdir as jest.Mock).mockResolvedValue(mockFiles);
 
       const result = await findReadmeFile('/test/dir');
-      
+
       expect(fs.readdir).toHaveBeenCalledWith('/test/dir');
       expect(result).toBeNull();
     });
@@ -69,12 +65,12 @@ describe('Markdown Utilities', () => {
       (fs.readFile as jest.Mock).mockResolvedValue(mockContent);
 
       const result = await readMarkdownFile('/test/file.md');
-      
+
       expect(fs.readFile).toHaveBeenCalledWith('/test/file.md', 'utf8');
       expect(result).toBe(mockContent);
     });
 
-    test('should propagate errors', async () => {
+    test('should propagate read errors', async () => {
       const error = new Error('File not found');
       (fs.readFile as jest.Mock).mockRejectedValue(error);
 
@@ -86,41 +82,26 @@ describe('Markdown Utilities', () => {
   describe('writeMarkdownFile', () => {
     test('should write content to markdown file', async () => {
       const content = '# Test Markdown';
-      
+
       await writeMarkdownFile('/test/file.md', content);
-      
+
       expect(fs.writeFile).toHaveBeenCalledWith('/test/file.md', content, 'utf8');
     });
 
-    test('should propagate errors', async () => {
+    test('should propagate write errors', async () => {
       const error = new Error('Permission denied');
       const content = '# Test Markdown';
       (fs.writeFile as jest.Mock).mockRejectedValue(error);
 
-      await expect(writeMarkdownFile('/test/file.md', content)).rejects.toThrow('Permission denied');
+      await expect(writeMarkdownFile('/test/file.md', content)).rejects.toThrow(
+        'Permission denied',
+      );
       expect(fs.writeFile).toHaveBeenCalledWith('/test/file.md', content, 'utf8');
     });
   });
 
-  describe('createReadmeFile', () => {
-    test('should create a default README.md file', async () => {
-      (path.join as jest.Mock).mockReturnValue('/test/dir/README.md');
-      (fs.writeFile as jest.Mock).mockResolvedValue(undefined);
-
-      const result = await createReadmeFile('/test/dir');
-      
-      expect(path.join).toHaveBeenCalledWith('/test/dir', 'README.md');
-      expect(fs.writeFile).toHaveBeenCalledWith(
-        '/test/dir/README.md',
-        expect.stringContaining('# Project README'),
-        'utf8'
-      );
-      expect(result).toBe('/test/dir/README.md');
-    });
-  });
-
   describe('parseInstructions', () => {
-    test('should parse instructions from markdown content', () => {
+    test('should parse multiple qmims instructions from markdown content', () => {
       const content = `# Test Markdown
 
 <!-- qmims: Instruction 1 -->
@@ -129,17 +110,17 @@ Some content
 
 <!-- qmims: Instruction 2 -->
 `;
-      
+
       const result = parseInstructions(content);
-      
+
       expect(result).toHaveLength(2);
-      expect(result[0]).toEqual({
+      expect(result[0]).toEqual<Instruction>({
         instruction: 'Instruction 1',
-        lineNumber: 3
+        lineNumber: 3,
       });
-      expect(result[1]).toEqual({
+      expect(result[1]).toEqual<Instruction>({
         instruction: 'Instruction 2',
-        lineNumber: 7
+        lineNumber: 7,
       });
     });
 
@@ -153,15 +134,46 @@ Target content line 1
 Target content line 2
 <!-- qmims-target-end -->
 `;
-      
+
       const result = parseInstructions(content);
-      
+
       expect(result).toHaveLength(1);
-      expect(result[0]).toEqual({
+      expect(result[0]).toEqual<Instruction>({
         instruction: 'Instruction with targets',
         lineNumber: 3,
         targetStart: 5,
-        targetEnd: 7
+        targetEnd: 7,
+      });
+    });
+
+    test('should assign target markers to each instruction independently', () => {
+      const content = `# Test Markdown
+
+<!-- qmims: First instruction -->
+<!-- qmims-target-start -->
+First target line
+<!-- qmims-target-end -->
+
+<!-- qmims: Second instruction -->
+<!-- qmims-target-start -->
+Second target line
+<!-- qmims-target-end -->
+`;
+
+      const result = parseInstructions(content);
+
+      expect(result).toHaveLength(2);
+      expect(result[0]).toEqual<Instruction>({
+        instruction: 'First instruction',
+        lineNumber: 3,
+        targetStart: 4,
+        targetEnd: 5,
+      });
+      expect(result[1]).toEqual<Instruction>({
+        instruction: 'Second instruction',
+        lineNumber: 8,
+        targetStart: 9,
+        targetEnd: 10,
       });
     });
 
@@ -177,118 +189,62 @@ Target content line 2
 
 <!-- qmims: Actual instruction -->
 `;
-      
+
       const result = parseInstructions(content);
-      
+
       expect(result).toHaveLength(1);
-      expect(result[0].instruction).toBe('Actual instruction');
+      expect(result[0]).toEqual<Instruction>({
+        instruction: 'Actual instruction',
+        lineNumber: 5,
+      });
     });
-  });
 
-  describe('extractTargetContent', () => {
-    test('should extract content using instruction with target markers', () => {
+    test('should ignore qmims comments with no instruction body', () => {
       const content = `# Test Markdown
 
-<!-- qmims: Instruction -->
-
-<!-- qmims-target-start -->
-Target content line 1
-Target content line 2
-<!-- qmims-target-end -->
+<!-- qmims:    -->
+<!-- qmims: Valid instruction -->
 `;
-      
-      const instruction: Instruction = {
-        instruction: 'Instruction',
+
+      const result = parseInstructions(content);
+
+      expect(result).toHaveLength(1);
+      expect(result[0]).toEqual<Instruction>({
+        instruction: 'Valid instruction',
+        lineNumber: 4,
+      });
+    });
+
+    test('should parse instruction text with surrounding whitespace trimmed', () => {
+      const content = `# Test Markdown
+
+<!--   qmims:    Add installation details here     -->
+`;
+
+      const result = parseInstructions(content);
+
+      expect(result).toHaveLength(1);
+      expect(result[0]).toEqual<Instruction>({
+        instruction: 'Add installation details here',
         lineNumber: 3,
-        targetStart: 5,
-        targetEnd: 7
-      };
-      
-      const result = extractTargetContent(content, instruction);
-      
-      expect(result).toBe('Target content line 1\nTarget content line 2');
+      });
     });
 
-    test('should extract content using target markers in content', () => {
+    test('should leave target markers undefined when none are found', () => {
       const content = `# Test Markdown
 
-<!-- qmims: Instruction -->
-
-<!-- qmims-target-start -->
-Target content line 1
-Target content line 2
-<!-- qmims-target-end -->
+<!-- qmims: Add usage examples -->
 `;
-      
-      const result = extractTargetContent(content);
-      
-      expect(result).toBe('Target content line 1\nTarget content line 2');
-    });
 
-    test('should extract paragraph after instruction if no target markers', () => {
-      const content = `# Test Markdown
+      const result = parseInstructions(content);
 
-<!-- qmims: Instruction -->
-This is the paragraph
-that follows the instruction.
-
-This is a different paragraph.
-`;
-      
-      const instruction: Instruction = {
-        instruction: 'Instruction',
-        lineNumber: 3
-      };
-      
-      const result = extractTargetContent(content, instruction);
-      
-      expect(result).toBe('This is the paragraph\nthat follows the instruction.');
-    });
-
-    test('should return null for empty content', () => {
-      expect(extractTargetContent('')).toBeNull();
-      expect(extractTargetContent(null as unknown as string)).toBeNull();
-    });
-
-    test('should return null if no target markers or instruction found', () => {
-      const content = `# Test Markdown
-
-No instructions or target markers here.
-`;
-      
-      expect(extractTargetContent(content)).toBeNull();
-    });
-
-    test('should return null if target markers are invalid', () => {
-      const content = `# Test Markdown
-
-<!-- qmims-target-end -->
-Content in wrong order
-<!-- qmims-target-start -->
-`;
-      
-      expect(extractTargetContent(content)).toBeNull();
-    });
-
-    test('should handle instruction with invalid target markers', () => {
-      const content = `# Test Markdown
-
-<!-- qmims: Instruction -->
-
-Some content.
-`;
-      
-      const instruction: Instruction = {
-        instruction: 'Instruction',
+      expect(result).toHaveLength(1);
+      expect(result[0]).toEqual<Instruction>({
+        instruction: 'Add usage examples',
         lineNumber: 3,
-        targetStart: 100, // Out of bounds
-        targetEnd: 200    // Out of bounds
-      };
-      
-      // Should fall back to paragraph extraction
-      const result = extractTargetContent(content, instruction);
-      
-      expect(result).toBe('Some content.');
+      });
+      expect(result[0].targetStart).toBeUndefined();
+      expect(result[0].targetEnd).toBeUndefined();
     });
   });
 });
